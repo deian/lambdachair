@@ -1,0 +1,7 @@
+input#title, input#author
+{ width:650px; }
+textarea#abstract 
+{
+width:650px;
+height:250px;
+}
