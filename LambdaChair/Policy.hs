@@ -1,10 +1,10 @@
 {-# LANGUAGE DeriveDataTypeable
            , FlexibleContexts
            , MultiParamTypeClasses
+           , ScopedTypeVariables
            , OverloadedStrings #-}
 module LambdaChair.Policy ( LambdaChairPolicy
                           , withLambdaChairPolicy
-                          , labeledRequestToPaperDoc 
                           -- * Rexport hails interface with groups
                           , findAll, findAllP
                           ) where
@@ -165,23 +165,6 @@ findAllP p query = liftDB $ do
                  else cursorToRecords cur docs
             _ -> return $ reverse docs
 
-
---
---
---
-
--- | Convert a labeled request containing a paper to a document
-labeledRequestToPaperDoc :: MonadDC m
-                         => DCLabeled Request -> m (DCLabeled Document)
-labeledRequestToPaperDoc lreq = liftLIO . withPolicyModule $
-  \(LambdaChairPolicyTCB p) -> do
-    let ldoc = labeledRequestToHson lreq
-    req <- unlabelP p lreq
-    doc <- unlabelP p ldoc
-    let doc' = merge ["paper" -: Binary (L.toStrict $ requestBody req)] doc
-        lend = (labelOf lreq) `lub` (dcLabel anybody $ privDesc p)
-    labelP p lend doc'
-
 --
 -- DCRecord instances
 --
@@ -193,9 +176,15 @@ instance DCRecord Paper where
     title    <- lookup_ "title" doc
     authors  <- lookup_ "authors" doc
     abstract <- lookup_ "abstract" doc
-    let body = case look "body" doc of
-                 (Just (HsonValue (BsonBlob b))) -> unBinary b
-                 _ -> S8.empty
+    let body = case lookup "paper" doc of
+                 (Just (d :: BsonDocument)) -> do
+                   fn <- lookup "fileName" d
+                   ct <- lookup "fileContentType" d
+                   c  <- lookup "fileContent" d
+                   return $ File { fileName        = fn
+                                 , fileContentType = ct
+                                 , fileContent     = unBinary c }
+                 _ -> Nothing
         conflicts  = fromMaybe [] $ lookup "conflicts" doc
     return Paper { paperId        = pid
                  , paperOwners    = owners
@@ -212,12 +201,16 @@ instance DCRecord Paper where
         pre = if isJust pid
                then ["_id" -: fromJust pid]
                else []
+        body = maybe [] (\f -> ["paper" -: toDoc f]) $ paperBody p
+        toDoc f= [ "fileName" -: fileName f
+                 , "fileContentType" -: fileContentType f 
+                 , "fileContent" -: Binary (fileContent f)
+                 ] :: BsonDocument
     in pre ++ [ "owners"    -: paperOwners p
               , "title"     -: paperTitle p
               , "authors"   -: paperAuthors p
               , "abstract"  -: paperAbstract p
-              , "body"      -: Binary (paperBody p)
-              , "conflicts" -: paperConflicts p ]
+              , "conflicts" -: paperConflicts p ] ++ body
 
   findWhereP = findWhereWithGroupP
 

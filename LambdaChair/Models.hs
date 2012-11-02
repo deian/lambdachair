@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module LambdaChair.Models (
     User(..)
-  , PaperId, getPaperId, Paper(..)
+  , PaperId, getPaperId, File(..), Paper(..)
   , ReviewId, getReviewId, Review(..)
   ) where
 
@@ -40,6 +40,11 @@ instance DCRecord User where
 -- Papers
 --
 
+data File = File { fileName        :: Text
+                 , fileContentType :: Text
+                 , fileContent     :: S8.ByteString
+                 } deriving (Show, Eq)
+
 type PaperId  = Maybe ObjectId
 
 getPaperId :: Paper -> ObjectId
@@ -50,7 +55,7 @@ data Paper = Paper { paperId        :: PaperId
                    , paperTitle     :: Text
                    , paperAuthors   :: Text
                    , paperAbstract  :: Text
-                   , paperBody      :: S8.ByteString
+                   , paperBody      :: Maybe File
                    , paperConflicts :: [UserName]
                    } deriving (Show, Eq)
 

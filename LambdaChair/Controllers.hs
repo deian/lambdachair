@@ -21,6 +21,7 @@ import           Hails.HttpServer.Types
 import           Hails.Web
 import           Hails.Web.REST (RESTController)
 import qualified Hails.Web.REST as REST
+import qualified Hails.Web.Frank as Frank
 import           Network.HTTP.Types
 
 import           LambdaChair.Policy
@@ -35,10 +36,22 @@ server = mkRouter $ do
   routeTop $ do
     muser <- getHailsUser
     return . respondHtml . welcome $ muser
+  -- program chair
   routeName "pc" pcController
+  -- papers
   routeName "papers" papersController
+  Frank.get "papers/:id/download" $ do
+    (Just pid) <- queryParam "id"
+    liftLIO . withLambdaChairPolicy $ do
+      mpaper <- findBy "papers" "_id" (read . S8.unpack $ pid :: ObjectId)
+      return $ case mpaper of
+        Just paper | isJust (paperBody paper)->
+          let file = fromJust . paperBody $ paper
+          in ok (S8.pack . T.unpack  $ fileContentType file) 
+                (L8.fromStrict $ fileContent file)
+        _  -> notFound
+  -- reviews
   routeName "reviews" reviewsController
-
 
 pcController :: RESTController
 pcController = do
@@ -47,7 +60,7 @@ pcController = do
     return $ respondHtml $ indexPC usr pc
   REST.new $ withUserOrDoAuth_ $ return . respondHtml $ newPC
   REST.create $ withUserOrDoAuth_ $ do
-    ldoc <- labeledRequestToHson `liftM` request
+    ldoc <- request >>= labeledRequestToHson
     liftLIO . withLambdaChairPolicy $ insert_ "pc" ldoc
     return $ redirectTo "/pc"
   REST.show $ redirectTo "/pc"
@@ -56,7 +69,7 @@ pcController = do
     mpost <- liftLIO . withLambdaChairPolicy $ findBy "pc" "_id" uid
     return $ maybe notFound (respondHtml . editPC) mpost
   REST.update $ withUserOrDoAuth_ $ do
-    ldoc <- labeledRequestToHson `liftM` request
+    ldoc <- request >>= labeledRequestToHson
     liftLIO . withLambdaChairPolicy $ save "pc" ldoc
     return $ redirectTo "/pc"
 
@@ -69,7 +82,12 @@ papersController = do
     pc <- liftLIO . withLambdaChairPolicy $ findAll $ select [] "pc"
     return $ respondHtml $ newPaper usr pc
   REST.create $ withUserOrDoAuth_ $ do
-    ldoc <- request >>= labeledRequestToPaperDoc
+    req <- request >>= unlabel
+    ldoc <- request >>= labeledRequestToHson
+
+    doc <- unlabel ldoc
+    liftLIO . ioTCB . putStrLn . show $ doc
+
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       insertLabeledRecord (lrec :: DCLabeled Paper)
@@ -94,7 +112,7 @@ papersController = do
       return (mpaper, pc)
     return $ maybe notFound (respondHtml . editPaper pc) mpaper
   REST.update $ withUserOrDoAuth_ $ do
-    ldoc <- labeledRequestToHson `liftM` request
+    ldoc <- request >>= labeledRequestToHson
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       saveLabeledRecord (lrec :: DCLabeled Paper)
@@ -109,7 +127,7 @@ reviewsController = do
                 findBy "papers" "_id" (read . S8.unpack $ pid :: ObjectId)
     return $ maybe notFound (respondHtml . newReview usr) mpaper
   REST.create $ withUserOrDoAuth_ $ do
-    ldoc <- labeledRequestToHson `liftM` request
+    ldoc <- request >>= labeledRequestToHson
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       insertLabeledRecord (lrec :: DCLabeled Review)
@@ -125,7 +143,7 @@ reviewsController = do
           mpaper <- findBy "papers" "_id" $ reviewPaper rev
           return $ maybe notFound (respondHtml . editReview rev) mpaper
   REST.update $ withUserOrDoAuth_ $ do
-    ldoc <- labeledRequestToHson `liftM` request
+    ldoc <- request >>= labeledRequestToHson
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       saveLabeledRecord (lrec :: DCLabeled Review)

@@ -54,7 +54,7 @@ welcome muser = do
 newPaper :: UserName -> [User] -> Html
 newPaper usr pc = do
   h1 $ "Submit a new paper"
-  form ! action "/papers" ! method "POST" {-! enctype "multipart/form-data" -}$ do
+  form ! action "/papers" ! method "POST" ! enctype "multipart/form-data" $ do
     input ! type_ "hidden" ! name "owners[]" ! value (toValue $ usr)
     div $ do
       label ! for "title" $ "Title:"
