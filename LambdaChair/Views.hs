@@ -75,7 +75,7 @@ newPaper usr pc = do
       forM_ pc $ \u -> do
         let id_ = toValue $ "conflict-"++ (T.unpack $ userName u)
         label ! class_ "checkbox" $ do
-          input ! type_ "checkbox" ! name "conflict[]" ! id id_
+          input ! type_ "checkbox" ! name "conflicts[]" ! id id_
                 ! value (toValue $ userName u)
           toHtml $ userFullName u
     div ! class_ "form-actions btn-group" $ do
