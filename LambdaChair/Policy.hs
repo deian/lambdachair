@@ -11,9 +11,9 @@ module LambdaChair.Policy ( LambdaChairPolicy
 
 import           Prelude hiding (lookup)
 import           Data.Maybe
+import           Data.Monoid
 import qualified Data.List as List
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Char8 as S8
 import           Data.Typeable
 
@@ -25,13 +25,11 @@ import           Hails.Database
 import           Hails.PolicyModule
 import           Hails.PolicyModule.Groups
 import           Hails.PolicyModule.DSL
-import           Hails.HttpServer.Types
 
 import           Hails.Database.Structured hiding (findAll, findAllP)
 
 import           LambdaChair.Models
 
-import LIO.TCB
 -- | Internal mappend policy. The type constructor should not be
 -- exported to avoid leaking the privilege.
 data LambdaChairPolicy = LambdaChairPolicyTCB DCPriv
@@ -41,30 +39,30 @@ instance PolicyModule LambdaChairPolicy where
    initPolicyModule priv = do
      setPolicy priv $ do
        database $ do
-         readers ==> anybody
-         writers ==> anybody
+         readers ==> True
+         writers ==> True
          admins  ==> this
 
       --
        collection "pc" $ do
          access $ do
-           readers ==> anybody
-           writers ==> anybody
+           readers ==> True
+           writers ==> True
          clearance $ do
            secrecy   ==> this
-           integrity ==> anybody
+           integrity ==> True
          document $ \doc -> do
            let (Just u) = fromDocument doc
-           readers ==> anybody
+           readers ==> True
            writers ==> (T.unpack $ userName u) \/ root \/ this
       --
        collection "papers" $ do
          access $ do
-           readers ==> anybody
-           writers ==> anybody
+           readers ==> True
+           writers ==> True
          clearance $ do
            secrecy   ==> this
-           integrity ==> anybody
+           integrity ==> True
          document $ \doc -> do
            let (Just p) = fromDocument doc
                owners = map T.unpack $ paperOwners p
@@ -74,11 +72,11 @@ instance PolicyModule LambdaChairPolicy where
       --
        collection "reviews" $ do
          access $ do
-           readers ==> anybody
-           writers ==> anybody
+           readers ==> True
+           writers ==> True
          clearance $ do
            secrecy   ==> this
-           integrity ==> anybody
+           integrity ==> True
          document $ \doc -> do
            r <- fromDocument doc
            let author = T.unpack $ reviewAuthor r
@@ -94,14 +92,14 @@ instance PolicyModule LambdaChairPolicy where
              root = principal "root"
 
 instance DCLabeledRecord LambdaChairPolicy Paper where
-  endorseInstance _ = LambdaChairPolicyTCB noPriv
+  endorseInstance _ = LambdaChairPolicyTCB emptyPriv
 
 instance DCLabeledRecord LambdaChairPolicy Review where
-  endorseInstance _ = LambdaChairPolicyTCB noPriv
+  endorseInstance _ = LambdaChairPolicyTCB emptyPriv
 
 withLambdaChairPolicy :: DBAction a -> DC a
 withLambdaChairPolicy act = withPolicyModule $
-  \(LambdaChairPolicyTCB noPrivs) -> act
+  \(LambdaChairPolicyTCB _) -> act
 
 
 --
@@ -109,7 +107,7 @@ withLambdaChairPolicy act = withPolicyModule $
 --
 
 instance Groups LambdaChairPolicy where
-  groupsInstanceEndorse = LambdaChairPolicyTCB noPriv
+  groupsInstanceEndorse = LambdaChairPolicyTCB emptyPriv
   groups _ p pgroup = case () of
     _ | group == "#commitee_member" -> do
       pc <- findAllP p $ select [] "pc"
@@ -123,7 +121,7 @@ instance Groups LambdaChairPolicy where
         Just paper -> return . map toPrincipal $ pc List.\\ paperConflicts paper
     _ -> return [pgroup]
     where group = principalName pgroup
-          toPrincipal = principal . S8.pack . T.unpack
+          toPrincipal = principal . T.unpack
           reviewPaperId = "#reviewPaperId="
 
 --
@@ -134,7 +132,7 @@ instance Groups LambdaChairPolicy where
 findWhereWithGroupP :: (DCRecord a, MonadDB m) => DCPriv -> Query -> m (Maybe a)
 findWhereWithGroupP p query  = liftDB $ do
   mldoc <- findOneP p query
-  c <- getClearance
+  c <- liftLIO $ getClearance
   case mldoc of
     Just ldoc' -> do ldoc <- labelRewrite (undefined :: LambdaChairPolicy) ldoc'
                      if canFlowToP p (labelOf ldoc) c 
@@ -145,7 +143,7 @@ findWhereWithGroupP p query  = liftDB $ do
 -- | Same as Hails\' 'findAll', but uses groups
 findAll :: (DCRecord a, MonadDB m)
         => Query -> m [a]
-findAll = findAllP noPriv
+findAll = findAllP emptyPriv
 
 -- | Same as Hails\' 'findAllP', but uses groups
 findAllP :: (DCRecord a, MonadDB m)
@@ -158,7 +156,7 @@ findAllP p query = liftDB $ do
           case mldoc of
             Just ldoc' -> do
               ldoc <- labelRewrite (undefined :: LambdaChairPolicy) ldoc'
-              c <- getClearance
+              c <- liftLIO $ getClearance
               if canFlowTo (labelOf ldoc) c
                 then do md <- fromDocument `liftM` (liftLIO $ unlabelP p ldoc)
                         cursorToRecords cur $ maybe docs (:docs) md
@@ -250,3 +248,6 @@ lookupObjId n d = case lookup n d of
           Just i -> return i
           _ -> fail $ "lookupObjId: cannot extract id from " ++ show n
   where maybeRead = fmap fst . listToMaybe . reads
+
+emptyPriv :: DCPriv
+emptyPriv = mempty

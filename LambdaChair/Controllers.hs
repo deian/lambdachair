@@ -1,12 +1,11 @@
 {-# LANGUAGE FlexibleInstances
            , MultiParamTypeClasses
            , OverloadedStrings #-}
-module LambdaChair.Controllers where
+module LambdaChair.Controllers (server) where
 
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.Text as T
-import           Data.Text.Lazy.Encoding (encodeUtf8)
 import           Data.Maybe
 
 import           Control.Monad
@@ -22,14 +21,12 @@ import           Hails.Web
 import           Hails.Web.REST (RESTController)
 import qualified Hails.Web.REST as REST
 import qualified Hails.Web.Frank as Frank
-import           Network.HTTP.Types
 
 import           LambdaChair.Policy
 import           LambdaChair.Models
 import           LambdaChair.Views
 
 import LIO.TCB
-import LIO.Labeled.TCB
 
 server :: Application
 server = mkRouter $ do
@@ -82,10 +79,9 @@ papersController = do
     pc <- liftLIO . withLambdaChairPolicy $ findAll $ select [] "pc"
     return $ respondHtml $ newPaper usr pc
   REST.create $ withUserOrDoAuth_ $ do
-    req <- request >>= unlabel
     ldoc <- request >>= labeledRequestToHson
 
-    doc <- unlabel ldoc
+    doc <- liftLIO $ unlabel ldoc
     liftLIO . ioTCB . putStrLn . show $ doc
 
     liftLIO . withLambdaChairPolicy $ do
@@ -116,7 +112,7 @@ papersController = do
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       saveLabeledRecord (lrec :: DCLabeled Paper)
-      rec <- unlabel lrec
+      rec <- liftLIO $ unlabel lrec
       return $ redirectTo $ "/papers/" ++ show (getPaperId rec)
 
 reviewsController :: RESTController
@@ -131,7 +127,7 @@ reviewsController = do
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       insertLabeledRecord (lrec :: DCLabeled Review)
-      rec <- unlabel lrec
+      rec <- liftLIO $ unlabel lrec
       return $ redirectTo $ "/papers/" ++ show (reviewPaper rec)
   REST.edit $ withUserOrDoAuth_ $ do
     (Just rid) <- queryParam "id"
@@ -147,12 +143,12 @@ reviewsController = do
     liftLIO . withLambdaChairPolicy $ do
       lrec <- fromLabeledDocument ldoc
       saveLabeledRecord (lrec :: DCLabeled Review)
-      rec <- unlabel lrec
-      doc <- unlabel ldoc
+      rec <- liftLIO $ unlabel lrec
       return $ redirectTo $ "/papers/" ++ show (reviewPaper rec)
 
 --
 -- Utils
 --
 
+withUserOrDoAuth_ :: Controller Response -> Controller Response
 withUserOrDoAuth_ = withUserOrDoAuth . const
