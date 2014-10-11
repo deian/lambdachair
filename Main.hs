@@ -12,7 +12,7 @@ import System.Environment
 main :: IO ()
 main = do
   let port = 3000
-      app conf req = setClearance dcPublic >> server conf req
+      app conf req = server conf req
   setEnv "DATABASE_CONFIG_FILE" "database.conf"
   runSettings (setPort port defaultSettings) $
     logStdoutDev $ execHailsApplication devBasicAuth app

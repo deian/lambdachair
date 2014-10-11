@@ -8,14 +8,15 @@ import LambdaChair.Models
 import Control.Monad
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Maybe
 import Data.Monoid (mempty)
+import Hails.HttpServer.Types
 import Hails.Web hiding (body)
 import Text.Blaze.Html5
 import Text.Blaze.Html5.Attributes hiding (label, form, span, title)
 import Text.Blaze.Html.Renderer.Utf8
 
-respondHtml content = okHtml $ renderHtml $ docTypeHtml $ do
+respondHtml :: Html -> Response
+respondHtml container = okHtml $ renderHtml $ docTypeHtml $ do
   head $ do
     title "LambdaChair"
     stylesheet "/static/css/bootstrap.css"
@@ -31,7 +32,7 @@ respondHtml content = okHtml $ renderHtml $ docTypeHtml $ do
              li $ a ! href "/papers/new" $ do
               span ! class_ "icon-plus icon-white" $ ""
               " Submit paper"
-     div ! class_ "container" $ content
+     div ! class_ "container" $ container
      script ! src "/static/js/jquery.min.js" $ ""
      script ! src "/static/js/bootstrap.min.js" $ ""
 
@@ -43,8 +44,8 @@ stylesheet uri = link ! rel "stylesheet" ! type_ "text/css" ! href (toValue uri)
 --
 
 welcome :: Maybe UserName -> Html
-welcome muser = do
-  h1 $ "Welcome..."
+welcome Nothing = h1 $ "Welcome..."
+welcome (Just usr) = h1 $ toHtml $ "Welcome..." ++ T.unpack usr
   
 
 --
@@ -124,12 +125,12 @@ indexPapers ps = do
   div $ do
     ul ! class_ "nav nav-pills nav-stacked" $ do
       li $ do
-        forM_ ps $ \p -> tr $ do
-          let mk x = a ! href (toValue $ "/papers/" ++ show (getPaperId p)) $ x
+        forM_ ps $ \paper -> tr $ do
+          let mk x = a ! href (toValue $ "/papers/" ++ show (getPaperId paper)) $ x
           mk $ do
-            toHtml $ paperTitle p
+            toHtml $ paperTitle paper
             " by "
-            toHtml $ paperAuthors p
+            toHtml $ paperAuthors paper
 
 showPaper :: UserName -> [Review] -> Paper -> Html
 showPaper usr reviews paper = do
@@ -154,7 +155,7 @@ showPaper usr reviews paper = do
         span ! class_ "icon-edit icon-white" $ ""
         " Edit paper"
   hr 
-  div $ forM_ (zip [1..] reviews) $ \(nr, rev) -> do
+  div $ forM_ (zip ([1..] :: [Int]) reviews) $ \(nr, rev) -> do
     h2 $ toHtml $ "Review #" ++ show nr
     h4 $ do "by "
             toHtml $ reviewAuthor rev

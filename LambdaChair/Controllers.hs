@@ -38,6 +38,8 @@ server = mkRouter $ do
   -- papers
   routeName "papers" papersController
   Frank.get "papers/:id/download" $ do
+    liftLIO $ do clr <- getClearance
+                 ioTCB $ putStrLn (show clr)
     (Just pid) <- queryParam "id"
     liftLIO . withLambdaChairPolicy $ do
       mpaper <- findBy "papers" "_id" (read . S8.unpack $ pid :: ObjectId)
